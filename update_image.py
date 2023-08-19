@@ -14,16 +14,25 @@ def fetch_timestamp(url):
     return timestamp
 
 def fetch_and_process_image(image_url, text_url, output_path,
-                            left, upper, right, lower, upscale_factor):
-    
+                            crop_dim_x, crop_ul_corner, contrast_factor=1.4):
+
     # Download the image from the image URL
     response = requests.get(image_url)
     img = Image.open(BytesIO(response.content))
     
     # Crop the image
-    cropped_img = img.crop((left, upper, right, lower))
+    crop_dims = (crop_dim_x, crop_dim_x*4/3) # x and y dimensions of the crop
+    crop_coords = (crop_ul_corner[0], 
+                crop_ul_corner[1], 
+                crop_ul_corner[0]+crop_dims[0], 
+                crop_ul_corner[1]+crop_dims[1])  # (left, upper, right, lower)
+    cropped_img = img.crop((crop_coords[0], 
+                            crop_coords[1], 
+                            crop_coords[2], 
+                            crop_coords[3])) # (left, upper, right, lower)
     
     # Calculate the new dimensions for upscale
+    upscale_factor = 1200/crop_dim_x
     new_width = int(cropped_img.width * upscale_factor)
     new_height = int(cropped_img.height * upscale_factor)
     
@@ -32,7 +41,7 @@ def fetch_and_process_image(image_url, text_url, output_path,
 
     # Increase the contrast
     enhancer = ImageEnhance.Contrast(upscaled_img)
-    upscaled_img = enhancer.enhance(1.4)
+    upscaled_img = enhancer.enhance(contrast_factor)
     
     # Fetch text from the text URL
     timestamp = fetch_timestamp(text_url)
@@ -56,7 +65,7 @@ def push_to_visionect(img_path='current-processed.jpg'):
         os.getenv("VISIONECT_API_SECRET")
     )
     uuid = os.getenv("VISIONECT_DEVICE_UUID")
-    
+
     fr = {'image': ('img.jpg', open(img_path, 'rb'), 'image/jpg', {'Expires': '0'})}
     sc = my_api.set_http(uuid, fr)
     if sc != 200:
@@ -64,22 +73,13 @@ def push_to_visionect(img_path='current-processed.jpg'):
     else:
         print("Successfully pushed image")
 
-
 # Specify the URL of the image, output image path, crop coordinates, and upscale factor
 image_url = 'https://fog.today/current.jpg'
 text_url = 'https://fog.today'
 image_path = 'current-processed.jpg'
 crop_dim_x = 800 # x dimension of cropped area, in px. I.e, zoom level.
-crop_corner = (320, 220) # upper left corner (x, y from upper left corner)
-
-# this part calculates the input to the function
-crop_dims = (crop_dim_x, crop_dim_x*4/3)
-crop_coords = (crop_corner[0], 
-               crop_corner[1], 
-               crop_corner[0]+crop_dims[0], 
-               crop_corner[1]+crop_dims[1])  # (left, upper, right, lower)
-upscale_factor = 1200/crop_dim_x
+crop_ul_corner = (320, 220) # upper left corner (x, y from upper left corner)
 
 print(datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")) # Print the current date and time
-fetch_and_process_image(image_url, text_url, image_path, *crop_coords, upscale_factor)
+fetch_and_process_image(image_url, text_url, image_path, crop_dim_x, crop_ul_corner)
 push_to_visionect(image_path)
