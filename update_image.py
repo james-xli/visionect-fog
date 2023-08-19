@@ -71,14 +71,7 @@ crop_and_upscale_image_with_overlay(image_url, text_url, output_image_path, *cro
 
 ### push image to visionect
 
-# setup
-# url = 'http://192.168.1.2:8081/'
-# key = 'd228264c2a8a42e3'
-# secret = 'lJLQ67MVY1pxyYseDavwBYinuaF1m6a9EyazF2Ht+Uk'
-# uuid = '3f003c00-0f47-3830-3933-303600000000'
-
 from vss_python_api import ApiDeclarations
-# my_api = ApiDeclarations(url, key, secret)
 
 load_dotenv()
 
