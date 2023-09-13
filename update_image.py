@@ -14,7 +14,7 @@ def fetch_timestamp(url):
     return timestamp
 
 def fetch_and_process_image(image_url, text_url, output_path,
-                            crop_dim_x, crop_ul_corner, contrast_factor=1.4):
+                            crop_dim_x, crop_ul_corner, contrast_factor=1.4, brightness_factor=1.5):
 
     # Download the image from the image URL
     response = requests.get(image_url)
@@ -42,6 +42,10 @@ def fetch_and_process_image(image_url, text_url, output_path,
     # Increase the contrast
     enhancer = ImageEnhance.Contrast(upscaled_img)
     upscaled_img = enhancer.enhance(contrast_factor)
+
+    # Increase the brightness
+    enhancer = ImageEnhance.Brightness(upscaled_img)
+    upscaled_img = enhancer.enhance(brightness_factor)
     
     # Fetch text from the text URL
     timestamp = fetch_timestamp(text_url)
