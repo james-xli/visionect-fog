@@ -2,3 +2,5 @@
 .DS_Store
 *.jpg
 *.png
+pgdata/*
+cron_output.log

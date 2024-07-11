@@ -9,11 +9,16 @@ The script does the following:
 
 ## Usage
 1. Configure the display and set up the Visionect Software Suite (VSS), following the [documentation by Visionect](https://docs.visionect.com/index.html).
+    - Install Docker Desktop
+    - Run Visionect Server using Docker Compose: Navigate to the root of this repository, then run `docker-compose up`. Remove `-arm` from the `image` line of `docker-compose.yml` if not running on an ARM machine.
     - As of August 2023, Visionect's product page suggests that a subscription is needed to use the display; however, I was able to configure the display and run VSS on my local network without a subscription.
+    - As of July 2024, Visionect Server versions 7.7.0 and above require a license. Version 7.6.5 and earlier seem to work fine without a license.
     - As VSS needs to be running continuously for the display image to be updated, I'd recommend installing it on a local server or similar.
 2. In the device "Status & Settings" page of VSS (after clicking into the device and then clicking "Advanced" at upper right), change the Backend setting to `HTTP - external renderer`.
+    - Also change the rotation setting
 3. Create a new `.env` file from my sample file: `cp .env-sample .env`
 4. Fill out the `.env` file with your VSS server URL, API key, API secret, and device UUID.
+    - Recommend going into your router settings and giving the Visionect server computer a static IP address to use for the server URL.
     - To get an API key and secret: In VSS, under the "Users" page, click "Add new API key" at lower right.
 5. Run the Python script: `python3 update_image.py`. 
 
