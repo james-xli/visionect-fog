@@ -23,11 +23,6 @@ def _fraction_near_white(img, threshold=250):
     return w / n
 
 
-def _apply_contrast_brightness(base, contrast_factor, brightness_factor):
-    out = ImageEnhance.Contrast(base).enhance(contrast_factor)
-    return ImageEnhance.Brightness(out).enhance(brightness_factor)
-
-
 def enhance_with_highlight_cap(
     base,
     contrast_factor,
@@ -35,39 +30,44 @@ def enhance_with_highlight_cap(
     max_near_white_fraction=0.2,
     white_threshold=250,
     search_iterations=24,
+    brightness_floor=0.01,
 ):
     """
-    Apply contrast then brightness like ImageEnhance, but scale both factors
-    down from their targets (keeping 1.0 as neutral) so at most
-    max_near_white_fraction of pixels are near-white after enhancement.
+    Apply full contrast, then brightness, while respecting a highlight cap.
 
-    contrast_factor: Passed to ``ImageEnhance.Contrast``. ``1.0`` leaves the
-    image unchanged; values above ``1.0`` increase contrast (midtones spread
-    toward black and white); below ``1.0`` flattens the image.
+    contrast_factor: Always applied as given to ``ImageEnhance.Contrast``
+    (``1.0`` unchanged; above ``1.0`` increases contrast; below flattens).
 
-    brightness_factor: Passed to ``ImageEnhance.Brightness``. ``1.0`` is
-    unchanged; above ``1.0`` brightens (can push highlights toward white);
-    below ``1.0`` darkens.
+    brightness_factor: Target for ``ImageEnhance.Brightness`` after contrast
+    (``1.0`` unchanged; above ``1.0`` brightens; below ``1.0`` darkens). If
+    that setting would make more than ``max_near_white_fraction`` of pixels
+    near-white (see ``white_threshold``), the brightness factor is reduced
+    (never increased past your target) until the rule is met. Contrast is
+    not changed by this adjustment.
 
-    Enhancement order matches the rest of this script: contrast first, then
-    brightness. When capping is active, both factors are scaled together as
-    ``1 + (factor - 1) * scale`` with ``scale`` in ``[0, 1]``.
+    Order: contrast first, then brightness, same as ``ImageEnhance`` chaining.
+
+    Returns:
+        ``(image, brightness_applied)`` — the enhanced image and the
+        ``ImageEnhance.Brightness`` factor actually used (after any capping).
     """
-    def scaled_factors(scale):
-        c = 1.0 + (contrast_factor - 1.0) * scale
-        b = 1.0 + (brightness_factor - 1.0) * scale
-        return c, b
+    contrasted = ImageEnhance.Contrast(base).enhance(contrast_factor)
 
-    def near_white_frac_at(scale):
-        c, b = scaled_factors(scale)
-        enhanced = _apply_contrast_brightness(base, c, b)
+    def near_white_frac_at(b):
+        enhanced = ImageEnhance.Brightness(contrasted).enhance(b)
         return _fraction_near_white(enhanced, white_threshold)
 
-    if near_white_frac_at(1.0) <= max_near_white_fraction:
-        c, b = scaled_factors(1.0)
-        return _apply_contrast_brightness(base, c, b)
+    b_hi = max(brightness_floor, float(brightness_factor))
+    if near_white_frac_at(b_hi) <= max_near_white_fraction:
+        b_final = b_hi
+        return ImageEnhance.Brightness(contrasted).enhance(b_final), b_final
 
-    lo, hi = 0.0, 1.0
+    b_lo = brightness_floor
+    if near_white_frac_at(b_lo) > max_near_white_fraction:
+        b_final = b_lo
+        return ImageEnhance.Brightness(contrasted).enhance(b_final), b_final
+
+    lo, hi = b_lo, b_hi
     for _ in range(search_iterations):
         mid = (lo + hi) / 2.0
         if near_white_frac_at(mid) <= max_near_white_fraction:
@@ -75,8 +75,8 @@ def enhance_with_highlight_cap(
         else:
             hi = mid
 
-    c, b = scaled_factors(lo)
-    return _apply_contrast_brightness(base, c, b)
+    b_final = lo
+    return ImageEnhance.Brightness(contrasted).enhance(b_final), b_final
 
 
 def fetch_timestamp(url):
@@ -93,7 +93,7 @@ def fetch_and_process_image(
     crop_ul_corner,
     contrast_factor=1.4,
     brightness_factor=1.5,
-    max_near_white_fraction=0.1,
+    max_near_white_fraction=0.15,
     white_threshold=250,
 ):
 
@@ -122,12 +122,16 @@ def fetch_and_process_image(
 
     # Increase contrast and brightness, capped so highlights do not blow out
     base = upscaled_img.copy()
-    upscaled_img = enhance_with_highlight_cap(
+    upscaled_img, brightness_applied = enhance_with_highlight_cap(
         base,
         contrast_factor,
         brightness_factor,
         max_near_white_fraction=max_near_white_fraction,
         white_threshold=white_threshold,
+    )
+    print(
+        "Final brightness factor: %.4f (target was %.4f)"
+        % (brightness_applied, brightness_factor)
     )
     
     # Fetch text from the text URL
