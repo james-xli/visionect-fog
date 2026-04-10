@@ -7,14 +7,95 @@ import os
 from dotenv import load_dotenv
 from vss_python_api import ApiDeclarations
 
+
+def _fraction_near_white(img, threshold=250):
+    """Fraction of RGB pixels where R, G, B are all >= threshold (blown highlights)."""
+    rgb = img.convert("RGB")
+    buf = rgb.tobytes()
+    mv = memoryview(buf)
+    n = len(mv) // 3
+    if n == 0:
+        return 0.0
+    w = 0
+    for i in range(0, len(mv), 3):
+        if mv[i] >= threshold and mv[i + 1] >= threshold and mv[i + 2] >= threshold:
+            w += 1
+    return w / n
+
+
+def _apply_contrast_brightness(base, contrast_factor, brightness_factor):
+    out = ImageEnhance.Contrast(base).enhance(contrast_factor)
+    return ImageEnhance.Brightness(out).enhance(brightness_factor)
+
+
+def enhance_with_highlight_cap(
+    base,
+    contrast_factor,
+    brightness_factor,
+    max_near_white_fraction=0.2,
+    white_threshold=250,
+    search_iterations=24,
+):
+    """
+    Apply contrast then brightness like ImageEnhance, but scale both factors
+    down from their targets (keeping 1.0 as neutral) so at most
+    max_near_white_fraction of pixels are near-white after enhancement.
+
+    contrast_factor: Passed to ``ImageEnhance.Contrast``. ``1.0`` leaves the
+    image unchanged; values above ``1.0`` increase contrast (midtones spread
+    toward black and white); below ``1.0`` flattens the image.
+
+    brightness_factor: Passed to ``ImageEnhance.Brightness``. ``1.0`` is
+    unchanged; above ``1.0`` brightens (can push highlights toward white);
+    below ``1.0`` darkens.
+
+    Enhancement order matches the rest of this script: contrast first, then
+    brightness. When capping is active, both factors are scaled together as
+    ``1 + (factor - 1) * scale`` with ``scale`` in ``[0, 1]``.
+    """
+    def scaled_factors(scale):
+        c = 1.0 + (contrast_factor - 1.0) * scale
+        b = 1.0 + (brightness_factor - 1.0) * scale
+        return c, b
+
+    def near_white_frac_at(scale):
+        c, b = scaled_factors(scale)
+        enhanced = _apply_contrast_brightness(base, c, b)
+        return _fraction_near_white(enhanced, white_threshold)
+
+    if near_white_frac_at(1.0) <= max_near_white_fraction:
+        c, b = scaled_factors(1.0)
+        return _apply_contrast_brightness(base, c, b)
+
+    lo, hi = 0.0, 1.0
+    for _ in range(search_iterations):
+        mid = (lo + hi) / 2.0
+        if near_white_frac_at(mid) <= max_near_white_fraction:
+            lo = mid
+        else:
+            hi = mid
+
+    c, b = scaled_factors(lo)
+    return _apply_contrast_brightness(base, c, b)
+
+
 def fetch_timestamp(url):
     response = requests.get(url)
     soup = BeautifulSoup(response.content, 'html.parser')
     timestamp = soup.find('div', {'id': 'timestamp'}).text.strip()
     return timestamp
 
-def fetch_and_process_image(image_url, text_url, output_path,
-                            crop_dim_x, crop_ul_corner, contrast_factor=1.4, brightness_factor=1.5):
+def fetch_and_process_image(
+    image_url,
+    text_url,
+    output_path,
+    crop_dim_x,
+    crop_ul_corner,
+    contrast_factor=1.4,
+    brightness_factor=1.5,
+    max_near_white_fraction=0.1,
+    white_threshold=250,
+):
 
     # Download the image from the image URL
     response = requests.get(image_url)
@@ -39,13 +120,15 @@ def fetch_and_process_image(image_url, text_url, output_path,
     # Upscale the cropped image
     upscaled_img = cropped_img.resize((new_width, new_height), Image.LANCZOS)
 
-    # Increase the contrast
-    enhancer = ImageEnhance.Contrast(upscaled_img)
-    upscaled_img = enhancer.enhance(contrast_factor)
-
-    # Increase the brightness
-    enhancer = ImageEnhance.Brightness(upscaled_img)
-    upscaled_img = enhancer.enhance(brightness_factor)
+    # Increase contrast and brightness, capped so highlights do not blow out
+    base = upscaled_img.copy()
+    upscaled_img = enhance_with_highlight_cap(
+        base,
+        contrast_factor,
+        brightness_factor,
+        max_near_white_fraction=max_near_white_fraction,
+        white_threshold=white_threshold,
+    )
     
     # Fetch text from the text URL
     timestamp = fetch_timestamp(text_url)
