@@ -88,19 +88,21 @@ def fetch_timestamp(url):
 def fetch_and_process_image(
     image_url,
     text_url,
-    output_path,
+    raw_image_path,
+    final_image_path,
     crop_dim_x,
     crop_ul_corner,
-    contrast_factor=1.4,
-    brightness_factor=1.5,
-    max_near_white_fraction=0.15,
-    white_threshold=250,
+    contrast_factor,
+    brightness_factor,
+    max_near_white_fraction,
+    white_threshold,
 ):
 
     # Download the image from the image URL
     response = requests.get(image_url)
     img = Image.open(BytesIO(response.content))
-    
+    img.save(raw_image_path)
+
     # Crop the image
     crop_dims = (crop_dim_x, crop_dim_x*4/3) # x and y dimensions of the crop
     crop_coords = (crop_ul_corner[0], 
@@ -146,7 +148,7 @@ def fetch_and_process_image(
     draw.text(position, timestamp, font=font, fill="white", anchor='rd')
     
     # Save the final image
-    upscaled_img.save(output_path)
+    upscaled_img.save(final_image_path)
 
 def push_to_visionect(img_path='current-processed.jpg'):
     load_dotenv()
@@ -167,10 +169,15 @@ def push_to_visionect(img_path='current-processed.jpg'):
 # Specify the URL of the image, output image path, crop coordinates, and upscale factor
 image_url = 'https://fog.today/current.jpg'
 text_url = 'https://fog.today'
-image_path = 'current-processed.jpg'
+raw_image_path = 'current-raw.jpg'
+final_image_path = 'current-processed.jpg'
 crop_dim_x = 800 # x dimension of cropped area, in px. I.e, zoom level.
 crop_ul_corner = (320, 220) # upper left corner (x, y from upper left corner)
+contrast_factor = 1.0
+brightness_factor = 1.5
+max_near_white_fraction = 0.05
+white_threshold = 250
 
 print(datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")) # Print the current date and time
-fetch_and_process_image(image_url, text_url, image_path, crop_dim_x, crop_ul_corner)
-push_to_visionect(image_path)
+fetch_and_process_image(image_url, text_url, raw_image_path, final_image_path, crop_dim_x, crop_ul_corner, contrast_factor, brightness_factor, max_near_white_fraction, white_threshold)
+push_to_visionect(final_image_path)
